@@ -1,0 +1,25 @@
+{
+  "name": "bnb",
+  "version": "1.0.0",
+  "description": "H5泡泡堂在线版",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.14.2",
+    "express": "^4.13.4",
+    "socket.io": "^1.4.5",
+    "swig": "^1.4.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SineYuan/BnBonline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SineYuan/BnBonline/issues"
+  },
+  "homepage": "https://github.com/SineYuan/BnBonline#readme"
+}
