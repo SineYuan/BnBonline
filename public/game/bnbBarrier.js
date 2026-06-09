@@ -27,7 +27,8 @@ var Barrier = {
         106: { Url: resPrefix + "Pic/Gift6.png", Offset: new Size(1, 2 + 10) },
         107: { Url: resPrefix + "Pic/Gift7.png", Offset: new Size(-2, -1 + 10) },
         108: { Url: resPrefix + "Pic/Gift8.png", Offset: new Size(-2, -1 + 10) },
-        109: { Url: resPrefix + "Pic/Gift9.png", Offset: new Size(0, 0 + 10) }
+        109: { Url: resPrefix + "Pic/Gift9.png", Offset: new Size(0, 0 + 10) },
+        110: { Url: resPrefix + "Pic/Gift8.png", Offset: new Size(-2, -1 + 10) }   //慢乌龟显示的图片
     },
 
     //创建对象
@@ -46,6 +47,10 @@ var Barrier = {
             barrierunit.ZIndex = zindex;
             barrierunit.Position = position;
 
+            // ========== 新增：礼物无敌标记 ==========
+            var invincibleUntil = 0;
+
+            // 如果是宝物（编号>100），额外处理动画和阴影
             if (num > 100) {
                 if (num == 107) {
                     barrierunit.Size = new Size(36, 38);
@@ -55,6 +60,9 @@ var Barrier = {
                 }
                 else if (num == 109) {
                     barrierunit.Size = new Size(40, 41);
+                }
+                else if (num == 110) {
+                    barrierunit.Size = new Size(36, 41);
                 }
                 else {
                     barrierunit.Size = new Size(42, 45);
@@ -103,27 +111,41 @@ var Barrier = {
                         clearInterval(shadowinterval);
                     }
                 }, 100);
+
+                // ========== 新增：为礼物设置无敌时间（500ms），避免被同一爆炸波次误伤 ==========
+                invincibleUntil = Date.now() + 100;
+                //console.log("[bnbBarrier.js] 礼物生成，无敌截止时间=" + invincibleUntil);
             }
             if (Barrier.Storage[y] == null) {
                 Barrier.Storage[y] = [];
             }
-            Barrier.Storage[y][x] = { Object: barrierunit, No: num };
+            //增加礼物的无敌时间属性
+            Barrier.Storage[y][x] = { Object: barrierunit, No: num, invincibleUntil: invincibleUntil };
         }
     },
 
-    //爆炸掉,区块序号
+    // 炸弹爆炸时调用：清除指定网格(x,y)上的障碍物，并处理箱子掉落宝物
     Bomb: function (x, y) {
         var b = Barrier.Storage[y][x];
         if (b != null) {
-            if ((b.No > 0 && b.No < 3) || b.No > 100) {
+            // 如果为宝物(>100)，检查无敌状态，无敌中则不销毁
+            if (b.No > 100) {
+                // ========== 新增：无敌保护 ==========
+                if (b.invincibleUntil && Date.now() < b.invincibleUntil) {
+                    //console.log("[bnbBarrier.js] 礼物处于无敌状态，跳过销毁 (x=" + x + ",y=" + y + ")");
+                    return; // 无敌期间不销毁
+                }
                 b.Object.Dispose();
                 townBarrierMap[y][x] = 0;
+                Barrier.Storage[y][x] = 0;
                 b = null;
             }
-            else if (b.No == 3) {
-                townBarrierMap[y][x] = CreateRandomGift(); //GiftStorage[y][x];
+            // 如果为砖块或木箱
+            else if (b.No > 0 && b.No <= 3) {
+                // 随机生成一个礼物编号，并更新地图数据
+                townBarrierMap[y][x] = CreateRandomGift(); // 原注释提示用GiftStorage，实际调用随机生成函数
                 b.Object.Dispose();
-                //生成宝物
+                // 在该位置重新创建宝物（此时编号已成为礼物编号）
                 Barrier.Create(x, y, townBarrierMap[y][x]);
             }
         }
@@ -147,5 +169,5 @@ function CreateRandomGift() {
     //return 100 + Math.floor(Math.random() * 9 + 1);
     var num = GiftSeed * 23 - 6.234;
     GiftSeed = num - Math.floor(num);
-    return 100 + Math.floor(GiftSeed * 9 + 1);
+    return 100 + Math.floor(GiftSeed * 10 + 1);
 }

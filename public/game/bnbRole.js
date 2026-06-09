@@ -28,61 +28,32 @@ var Role = function(number) {
 
     RoleStorage.push(this);
     
-    //初始层次
-    this.Object.ZIndex = 3;
-
-    //是否死亡
-    this.IsDeath = false;
-
-    //偏移
-    this.Offset = new Size(0, 0);
-
-    //原始偏移
-    this.RawOffset = null;
-
-    //行动方向，默认向下
-    this.Direction = Direction.Down;
-
-    //原始速度
-    this.RawSpeed = 0;
-
-    //移动速度
-    this.MoveStep = 1;
-
-    //坐骑类型
-    this.MoveHorse = MoveHorseObject.None;
-
-    //是否可以踢泡泡
-    this.IsCanMovePaopao = false;
-
-    //连续可放泡泡次数
-    this.CanPaopaoLength = 1;
-
-    //已经放还未爆炸的泡泡数
-    this.PaopaoCount = 0;
-
-    //泡泡爆炸强度
-    this.PaopaoStrong = 1;
-
-    //是否在泡泡中
-    this.IsInPaopao = false;
-
-    //坐骑对象
-    this.RideHorseObject = null;
-
-    //坐骑时的大小
-    this.RideSize = null;
-
-    //角色原始大小
-    this.RawSize = null;
-
-    //AniSize
-    this.AniSize = null;
-
-    //Die Size
-    this.DieSize = null;
-
-    //设置初始速度
+    this.Object.ZIndex = 3;                    // 初始渲染层级
+    this.IsDeath = false;                      // 是否死亡
+    this.Offset = new Size(0, 0);              // 绘制偏移（用于骑乘等）
+    this.RawOffset = null;                     // 原始偏移备份
+    this.Direction = Direction.Down;           // 当前方向（默认向下）
+    this.RawSpeed = 0;                         // 原始速度（步长）
+    this.MoveStep = 1;                         // 当前移动步长（像素/20ms）
+    this.MoveHorse = MoveHorseObject.None;     // 骑乘类型（None/Owl/Turtle/UFO）
+    this.IsCanMovePaopao = false;              // 是否可以踢泡泡
+    this.CanPaopaoLength = 1;                  // 可同时放置的泡泡数量
+    this.PaopaoCount = 0;                      // 当前已放置且未炸的泡泡数
+    this.PaopaoStrong = 1;                     // 泡泡爆炸强度（范围格子数）
+    this.IsInPaopao = false;                   // 是否被困在泡泡中
+    this.RideHorseObject = null;               // 骑乘对象实例
+    this.RideSize = null;                      // 骑乘时的角色尺寸
+    this.RawSize = null;                       // 原始尺寸备份
+    this.AniSize = null;                       // 被困泡泡时的动画尺寸
+    this.DieSize = null;                       // 死亡动画尺寸
+    this.PushCount = 0;                        // 用于推箱子蓄力，避免一碰就推动
+    this.LastDirection = 0;                    // 记录上一次的方向，用于推箱子判断
+    // ========== 踢泡泡蓄力相关 ==========
+    this.KickCount = 0;                        // 用于踢泡泡蓄力，避免一碰就踢
+    this.LastKickDirection = 0;                // 记录上一次的方向，用于踢泡泡判断
+    // =================================
+    
+    // 设置原始速度（同时重置当前步长）
     this.SetRawSpeed = function(speed) {
         this.RawSpeed = speed;
         this.MoveStep = speed;
@@ -176,7 +147,7 @@ var Role = function(number) {
             var roleActualPoint = t.CenterPoint();
             switch (directionnum) {
                 case Direction.Up:
-                    if (t.IsCanPass(new Point(roleActualPoint.X, roleActualPoint.Y - t.MoveStep - 20))) {
+                    if (t.IsCanPass(new Point(roleActualPoint.X, roleActualPoint.Y - t.MoveStep - 19.99))) {
                         t.Object.Position.Y -= t.MoveStep;
                         t.RoleOffset();
                         if (t.RideHorseObject != null) {
@@ -185,7 +156,7 @@ var Role = function(number) {
                     }
                     break;
                 case Direction.Down:
-                    if (t.IsCanPass(new Point(roleActualPoint.X, roleActualPoint.Y + t.MoveStep + 20))) {
+                    if (t.IsCanPass(new Point(roleActualPoint.X, roleActualPoint.Y + t.MoveStep + 19.99))) {
                         t.Object.Position.Y += t.MoveStep;
                         t.RoleOffset();
                         if (t.RideHorseObject != null) {
@@ -194,7 +165,7 @@ var Role = function(number) {
                     }
                     break;
                 case Direction.Left:
-                    if (t.IsCanPass(new Point(roleActualPoint.X - t.MoveStep - 20, roleActualPoint.Y))) {
+                    if (t.IsCanPass(new Point(roleActualPoint.X - t.MoveStep - 19.99 , roleActualPoint.Y))) {
                         t.Object.Position.X -= t.MoveStep;
                         t.RoleOffset();
                         if (t.RideHorseObject != null) {
@@ -203,7 +174,7 @@ var Role = function(number) {
                     }
                     break;
                 case Direction.Right:
-                    if (t.IsCanPass(new Point(roleActualPoint.X + t.MoveStep + 20, roleActualPoint.Y))) {
+                    if (t.IsCanPass(new Point(roleActualPoint.X + t.MoveStep + 19.99, roleActualPoint.Y))) {
                         t.Object.Position.X += t.MoveStep;
                         t.RoleOffset();
                         if (t.RideHorseObject != null) {
@@ -217,10 +188,14 @@ var Role = function(number) {
     
     //增加移动速度
     this.AddMoveStep = function(addNum) {
-        this.MoveStep += addNum;
-        if (this.MoveStep > RoleConstant.MaxMoveStep) {
-            this.MoveStep = RoleConstant.MaxMoveStep;
+        this.RawSpeed += addNum;
+        if (this.RawSpeed > RoleConstant.MaxMoveStep) {
+            this.RawSpeed = RoleConstant.MaxMoveStep;
         }
+        if(this.MoveHorse == MoveHorseObject.None){
+            this.MoveStep = this.RawSpeed;
+        }
+        //console.log("[bnbRole.js] [" + this.RoleNumber + "] AddMoveStep -> 新步长=" + this.MoveStep);
     }
 
     //增加泡泡强度
@@ -335,13 +310,134 @@ var Role = function(number) {
         return true;
     };
 
-    //坐标所属区块是否可以通过
+    // ======================== 踢泡泡相关方法 ========================
+    /**
+     * 尝试踢动前方的泡泡（仿照推箱子，支持连续移动直到障碍物）
+     * @param {number} bubbleX 泡泡当前X索引
+     * @param {number} bubbleY 泡泡当前Y索引
+     * @param {number} direction 踢动方向
+     * @returns {boolean} 是否成功踢动
+     */
+    this.tryKickPaopao = function(bubbleX, bubbleY, direction) {
+        //console.group("[bnbRole.js] [" + this.RoleNumber + "] ⚽ 尝试踢泡泡");
+        //console.log("[bnbRole.js] 泡泡初始位置: (" + bubbleX + ", " + bubbleY + "), 地图值: " + townBarrierMap[bubbleY][bubbleX]);
+        
+        // 只有具备踢泡泡能力的角色才能踢
+        if (!this.IsCanMovePaopao) {
+            //console.log("[bnbRole.js] ❌ 踢泡泡失败: 角色没有踢泡泡能力（需道具106）");
+            //console.groupEnd();
+            return false;
+        }
+
+        if (this.MoveHorse != MoveHorseObject.None) {
+            //console.log("[bnbRole.js] ❌ 踢泡泡失败: 角色骑在动物上面不能踢");
+            //console.groupEnd();
+            return false;
+        }
+        // 增加踢泡泡的蓄力，避免一碰就踢（仿推箱子）
+        if(direction === this.LastKickDirection){
+            if(this.KickCount < 50){
+                this.KickCount++;
+            }
+        } else {
+            this.KickCount = 0;
+        }
+        this.LastKickDirection = direction;
+        //console.log("[bnbRole.js] 角色方向: " + this.LastKickDirection + "， 踢泡泡计数: " + this.KickCount);
+        if (this.KickCount < 10) {
+            //console.groupEnd();
+            return false;
+        }
+        //console.groupEnd();
+        // 计算踢动方向上的最远可移动位置（连续穿透空地0和道具>100）
+        var step = 1;
+        var maxSteps = 20; // 地图最大尺寸15x13
+        var targetX = bubbleX, targetY = bubbleY;
+        var lastValidX = bubbleX, lastValidY = bubbleY;
+        var foundObstacle = false;
+        
+        while (step <= maxSteps) {
+            var nextX = bubbleX, nextY = bubbleY;
+            switch(direction) {
+                case Direction.Up:    nextY = bubbleY - step; break;
+                case Direction.Down:  nextY = bubbleY + step; break;
+                case Direction.Left:  nextX = bubbleX - step; break;
+                case Direction.Right: nextX = bubbleX + step; break;
+            }
+            // 边界检查
+            if (nextX < 0 || nextX >= 15 || nextY < 0 || nextY >= 13) {
+                //console.log("[bnbRole.js] 踢泡泡 遇到边界，停止于 (" + lastValidX + "," + lastValidY + ")");
+                targetX = lastValidX;
+                targetY = lastValidY;
+                foundObstacle = true;
+                break;
+            }
+            var cell = townBarrierMap[nextY][nextX];
+            // 可通行条件：空地0 或 道具>100
+            var isPassable = (cell === 0 || cell > 100);
+            if (!isPassable) {
+                // 遇到障碍物（墙壁、箱子、其他泡泡等），停止在前一个位置
+                //console.log("[bnbRole.js] 踢泡泡 遇到障碍物 值=" + cell + "，停止于 (" + lastValidX + "," + lastValidY + ")");
+                targetX = lastValidX;
+                targetY = lastValidY;
+                foundObstacle = true;
+                break;
+            }
+            // 检查是否有其他角色站在目标格子上
+            var hasRole = false;
+            for (var i = 0; i < RoleStorage.length; i++) {
+                var r = RoleStorage[i];
+                if (!r.IsDeath) {
+                    var pos = r.CurrentMapID();
+                    if (pos && pos.X === nextX && pos.Y === nextY) {
+                        hasRole = true;
+                        break;
+                    }
+                }
+            }
+            if (hasRole) {
+                console.log("[bnbRole.js] 踢泡泡 遇到其他角色，停止于 (" + lastValidX + "," + lastValidY + ")");
+                targetX = lastValidX;
+                targetY = lastValidY;
+                foundObstacle = true;
+                break;
+            }
+            // 当前格子可通行，更新最后有效位置
+            lastValidX = nextX;
+            lastValidY = nextY;
+            step++;
+        }
+        if((bubbleX == targetX) && (bubbleY == targetY)){     //解决泡泡已经在边缘的位置但是仍能被踢动的问题
+            return false;
+        }
+        //console.log("[bnbRole.js] 踢泡泡 遇到其他角色，停止于 (" + lastValidX + "," + lastValidY + ")");
+        PaopaoOwner = PaopaoArray[Math.floor(bubbleY)][bubbleX].Master;
+        //console.log("[bnbRole.js] 踢泡泡  PaopaoOwner (" + PaopaoOwner.RoleNumber + ")");
+        PaopaoArray[Math.floor(bubbleY)][bubbleX].Clear();
+        if(townBarrierMap[lastValidY][lastValidX] > 100){
+            if (Barrier.Storage[lastValidY] && Barrier.Storage[lastValidY][lastValidX]) {
+                Barrier.Storage[lastValidY][lastValidX].Object.Dispose();
+                townBarrierMap[lastValidY][lastValidX] = 0;
+                Barrier.Storage[lastValidY][lastValidX] = 0;
+            }
+        }
+        //PaopaoArray[targetY][targetX] = this;
+        new KickPaopao(PaopaoOwner, targetY, targetX);
+        //return true;
+        
+        //console.groupEnd();
+        // 踢动成功后重置蓄力计数
+        this.KickCount = 0;
+        return true;
+    };
+
+    // 核心碰撞检测：判断屏幕某点是否可进入（已增加推箱子和踢泡泡逻辑）
     this.IsCanPass = function(point) {
         //去掉边框的像素
         var nextmap = FindMapID(point);
 
-        //坐标范围
-        if (point.X >= 0 && point.Y >= 0 && point.X < 600 && point.Y < 520) {
+        // 边界检查
+        if (point.X >= 0 && point.Y >= 0 && point.X <= 600 && point.Y <= 520) { //这里增加了等于600和 520的
             var currentMapID = this.CurrentMapID();
             
             if(townBarrierMap[nextmap.Y][nextmap.X] == 100 && currentMapID.X == nextmap.X && currentMapID.Y == nextmap.Y){
@@ -372,7 +468,29 @@ var Role = function(number) {
                 case Direction.Left:  frontX--; break;
                 case Direction.Right: frontX++; break;
             }
-
+            //console.log("[bnbRole.js]    前方格子: (" + frontX + ", " + frontY + ")");
+            
+            // ========== 踢泡泡逻辑：检测前方是否是泡泡 ==========
+            if(frontX>=0 && frontX<15 && frontY>=0 && frontY<13 && townBarrierMap[frontY][frontX] === 100 && !(currentMapID.X === frontX && currentMapID.Y === frontY)){
+                //console.log("[bnbRole.js] [" + this.RoleNumber + "] 🫧 踢泡泡 检测到前方泡泡 (" + frontX + "," + frontY + "), isAtEdge=" + isAtEdge);
+                if(isAtEdge) {
+                    // 角色已触碰到泡泡，尝试踢动
+                    if(this.tryKickPaopao(frontX, frontY, this.Direction)){
+                        // 踢动成功，角色可以进入原泡泡位置（原位置已变为0）
+                        //console.log("[bnbRole.js] [" + this.RoleNumber + "] 踢泡泡成功，角色可以进入原泡泡位置");
+                        return true;
+                    } else {
+                        // 踢动失败，不能进入泡泡格子
+                        //console.log("[bnbRole.js] [" + this.RoleNumber + "] 踢泡泡失败，不能进入泡泡格子");
+                        return false;
+                    }
+                } else {
+                    // 尚未触碰到泡泡，允许角色继续向泡泡移动
+                    //console.log("[bnbRole.js] [" + this.RoleNumber + "] 踢泡泡 尚未贴紧泡泡，允许继续移动");
+                    return true;
+                }
+            }
+            
             // ========== 推箱子逻辑：检测前方是否是箱子 ==========
             if(frontX>=0 && frontX<15 && frontY>=0 && frontY<13 && townBarrierMap[frontY][frontX] === 3){
                 if(isAtEdge) {
@@ -405,57 +523,29 @@ var Role = function(number) {
                 }
 
                 if (this.MoveHorse != MoveHorseObject.UFO) {
-                    //捡宝物
-                    if (townBarrierMap[currentMapID.Y][currentMapID.X] > 100) {
+                    var currentVal = townBarrierMap[currentMapID.Y][currentMapID.X];
+                    if (currentVal > 100) {
+                        //console.log("[bnbRole.js] [" + this.RoleNumber + "] 拾取道具 值=" + currentVal);
                         SystemSound.Play(SoundType.Get);
-                        Barrier.Storage[currentMapID.Y][currentMapID.X].Object.Dispose();
-
-                        //捡宝物后的属性
-                        switch (townBarrierMap[currentMapID.Y][currentMapID.X]) {
-                            //加泡泡次数                                         
-                            case 101:
-                                this.CanPaopaoLength++;
-                                break;
-                            //速度+1                                         
-                            case 102:
-                                this.AddMoveStep(1);
-                                break;
-                            //泡泡强度                                         
-                            case 103:
-                                this.AddPaopaoStrong(1);
-                                break;
-                            //泡泡强度达到最大                                         
-                            case 104:
-                                this.AddPaopaoStrong(RoleConstant.MaxPaopaoStrong);
-                                break;
-                            //速度达到最大                                         
-                            case 105:
-                                this.MoveStep = RoleConstant.MaxMoveStep;
-                                break;
-                            //可以踢泡泡                                         
-                            case 106:
-                                this.IsCanMovePaopao = true;
-                                break;
-                            //可以乘坐，并移动速度快一点                 
-                            case 107:
-                                this.MoveStep = this.RawSpeed + 1;
-                                this.MoveHorse = MoveHorseObject.Owl;
-                                this.Ride();
-                                break;
-                            //可以乘坐但是移动速度很慢                                         
-                            case 108:
-                                this.MoveStep = RoleConstant.MinMoveStep;
-                                this.MoveHorse = MoveHorseObject.Turtle;
-                                this.Ride();
-                                break;
-                            //可以乘坐並且使移动速度变很快，乘坐后无法捡宝物                                         
-                            case 109:
-                                this.MoveStep = RoleConstant.MaxMoveStep;
-                                this.MoveHorse = MoveHorseObject.UFO;
-                                this.Ride();
-                                break;
+                        if (Barrier.Storage[currentMapID.Y] && Barrier.Storage[currentMapID.Y][currentMapID.X]) {
+                            Barrier.Storage[currentMapID.Y][currentMapID.X].Object.Dispose();
+                        }
+                        switch (currentVal) {
+                            case 101: this.CanPaopaoLength++; break;  //泡泡
+                            case 102: this.AddMoveStep(1); break;     //鞋子
+                            case 103: this.AddPaopaoStrong(1); break; //药水
+                            case 104: this.AddPaopaoStrong(RoleConstant.MaxPaopaoStrong); break; //最大威力
+                            case 105: this.AddMoveStep(8); this.IsCanMovePaopao = true; break;  //红牛
+                            case 106: this.IsCanMovePaopao = true; break;  //球鞋
+                            case 107: if(this.MoveHorse == MoveHorseObject.None){this.MoveStep = MoveHorseObject.Owl.MoveStep; this.MoveHorse = MoveHorseObject.Owl; this.Ride()}; break; //小鸟
+                            case 108: if(this.MoveHorse == MoveHorseObject.None){this.MoveStep = MoveHorseObject.Turtle.MoveStep; this.MoveHorse = MoveHorseObject.Turtle; this.Ride()}; break; //海盗乌龟
+                            case 109: if(this.MoveHorse == MoveHorseObject.None){this.MoveStep = MoveHorseObject.UFO.MoveStep; this.MoveHorse = MoveHorseObject.UFO; this.Ride(); break};  //飞碟
+                            case 110: if(this.MoveHorse == MoveHorseObject.None){this.MoveStep = MoveHorseObject.SlowTurtle.MoveStep; this.MoveHorse = MoveHorseObject.SlowTurtle; this.Ride()}; break; //慢乌龟
                         }
                         townBarrierMap[currentMapID.Y][currentMapID.X] = 0;
+                        //吃掉宝物后，障碍物混存标记Barrier也要清零
+                        Barrier.Storage[currentMapID.Y][currentMapID.X] = 0;
+                        //吃掉宝物后，障碍物混存标记Barrier也要清零
                     }
                 }
             }
@@ -550,7 +640,7 @@ var Role = function(number) {
 
 //根据相对位置获取区块ID
 function GetMapIDByRelativePoint(x, y) {
-    if (x >= 0 && y >= 0 && x < 600 && y < 520) {
+    if (x >= 0 && y >= 0 && x <= 600 && y <= 520) { //增加了等于600 和 520
         var xunitNumber = parseInt(x / 40, 10);
         var yunitNumber = parseInt(y / 40, 10);
 
@@ -682,15 +772,10 @@ Role.prototype.Ride = function() {
         this.Object.SetImage(resPrefix + "Pic/Role" + this.RoleNumber + "Ride.png");
         this.RideHorseObject.SetDirection(this.Direction);
         switch (this.MoveHorse) {
-            case MoveHorseObject.Owl:
-                this.Offset.Height = this.MoveHorse.Size.Height - 10;
-                break;
-            case MoveHorseObject.Turtle:
-                this.Offset.Height = this.MoveHorse.Size.Height;
-                break;
-            case MoveHorseObject.UFO:
-                this.Offset.Height = this.MoveHorse.Size.Height;
-                break;
+            case MoveHorseObject.Owl: this.Offset.Height = this.MoveHorse.Size.Height - 10; break;
+            case MoveHorseObject.Turtle: this.Offset.Height = this.MoveHorse.Size.Height; break;
+            case MoveHorseObject.UFO: this.Offset.Height = this.MoveHorse.Size.Height; break;
+            case MoveHorseObject.SlowTurtle: this.Offset.Height = this.MoveHorse.Size.Height; break;
         }
         //this.ResetPosition();
         this.RideHorseObject.ResetPosition(this);
@@ -699,14 +784,31 @@ Role.prototype.Ride = function() {
 
 //坐骑被炸死
 Role.prototype.OutRide = function(){
-    if(this.MoveHorse !=  MoveHorseObject.None){
+    if(this.MoveHorse != MoveHorseObject.None){
+        // 1. 停止移动和动画
+        this.Stop();
+
+        // 2. 保存骑乘时的中心点（此时角色还在骑乘状态）
+        var oldCenter = this.CenterPoint();
+
+        // 3. 恢复原始尺寸和偏移
         this.Object.Size = new Size(this.RawSize.Width, this.RawSize.Height);
         this.Offset = new Size(this.RawOffset.Width, this.RawOffset.Height);
         this.MoveHorse =  MoveHorseObject.None;
         this.MoveStep = this.RawSpeed;
         this.Object.SetImage(resPrefix + "Pic/Role" + this.RoleNumber + ".png");
-        this.RideHorseObject.Die();
-        this.RideHorseObject = null;
+
+        // 5. 恢复方向对应的起始帧（关键：防止方向变成向上）
+        this.Object.StartPoint = new Point(0, this.Object.Size.Height * this.Direction);
+
+        // 6. 通过坐骑对象调整角色位置（传入保存的中心点）
+        if (this.RideHorseObject) {
+            this.RideHorseObject.AdjustRoleOnDismount(this, oldCenter);
+            this.RideHorseObject.Die();
+            this.RideHorseObject = null;
+        }
+
+        //console.log("[bnbRole.js] [" + this.RoleNumber + "] 下坐骑，方向已恢复为 " + this.Direction);
     }
 }
 
