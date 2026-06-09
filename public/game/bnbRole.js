@@ -252,6 +252,89 @@ var Role = function(number) {
         return nextmapID != null && (townBarrierMap[currentMapID.Y][currentMapID.X] == 0 || townBarrierMap[currentMapID.Y][currentMapID.X] > 100);
     }
 
+    // ======================== 推箱子相关方法 ========================
+    /**
+     * 尝试推动箱子
+     * @param {number} boxX 箱子当前X索引
+     * @param {number} boxY 箱子当前Y索引
+     * @param {number} direction 推动方向（使用 Direction 常量）
+     * @returns {boolean} 是否成功推动
+     */
+    this.tryPushBox = function(boxX, boxY, direction) {
+        // 增加推箱子的难度，不然碰一下就动了
+        if(direction === this.LastDirection){
+            if(this.PushCount<50){     //防呆，防止玩家一直摁一个方向，导致计数归零越界
+                this.PushCount++;
+            }
+        }else{
+            this.PushCount = 0;
+        }
+        this.LastDirection = direction;
+        if (this.PushCount < 10)
+        {
+            return false;
+        }
+        //增加推箱子的难度，不然碰一下就动了
+
+        var pushX = boxX, pushY = boxY;
+        switch(direction) {
+            case Direction.Up:    pushY--; break;
+            case Direction.Down:  pushY++; break;
+            case Direction.Left:  pushX--; break;
+            case Direction.Right: pushX++; break;
+        }
+
+        // 边界检查
+        if(pushX < 0 || pushX >= 15 || pushY < 0 || pushY >= 13) {
+            return false;
+        }
+
+        // ========== 修改点：目标格子是否为礼物（>100） ==========
+        var targetVal = townBarrierMap[pushY][pushX];
+        if (targetVal > 100) {
+            // 目标位置有礼物，先销毁礼物（相当于被箱子覆盖）
+            if (Barrier.Storage[pushY] && Barrier.Storage[pushY][pushX]) {
+                Barrier.Storage[pushY][pushX].Object.Dispose();
+                Barrier.Storage[pushY][pushX] = null;
+            }
+            townBarrierMap[pushY][pushX] = 0;  // 清空礼物格子
+            // 继续执行下方箱子移动逻辑（此时目标格子已变为空地）
+        }
+        else if (targetVal !== 0) {
+            return false;
+        }
+        // ========================================================
+
+        // 检查是否有其他角色站在目标格子上
+        for(var i=0; i<RoleStorage.length; i++) {
+            var r = RoleStorage[i];
+            if(!r.IsDeath) {
+                var pos = r.CurrentMapID();
+                if(pos && pos.X === pushX && pos.Y === pushY) {
+                    return false;
+                }
+            }
+        }
+
+        // 执行推动：更新地图数组
+        townBarrierMap[boxY][boxX] = 0;
+        townBarrierMap[pushY][pushX] = 3;
+
+        // 移除原位置的箱子图形
+        if(Barrier.Storage[boxY] && Barrier.Storage[boxY][boxX]) {
+            Barrier.Storage[boxY][boxX].Object.Dispose();
+            Barrier.Storage[boxY][boxX] = null;
+        }
+
+        // 在新位置创建箱子图形
+        var newBox = Barrier.Create(pushX, pushY, 3);
+        if(newBox && newBox.Object) {
+            newBox.Object.ZIndex = pushY * 2 + 1;
+        } else {
+        }
+        return true;
+    };
+
     //坐标所属区块是否可以通过
     this.IsCanPass = function(point) {
         //去掉边框的像素
@@ -263,6 +346,46 @@ var Role = function(number) {
             
             if(townBarrierMap[nextmap.Y][nextmap.X] == 100 && currentMapID.X == nextmap.X && currentMapID.Y == nextmap.Y){
                 return true;
+            }
+            // 计算角色中心点相对于当前格子中心的偏移（格子大小40x40，中心在(20,20)）
+            var centerX = currentMapID.X * 40 + 20;
+            var centerY = currentMapID.Y * 40 + 20;
+            var mp = this.MapPoint();    // MapPoint是角色中心点的位置，而CenterPoint不是，反而横坐标大半个格子，纵坐标大一个格子
+            var dx = mp.X - centerX;   // 范围 -20 ~ 20
+            var dy = mp.Y - centerY;
+
+            // 判断是否已到达当前格子边缘（阈值改为0像素，确保角色贴紧才触发,预留，以后可以调整）
+            var edgeThreshold = 0;   // 小于0像素时认为已触碰边缘，虽然都是0，但是先保留
+            var isAtEdge = false;
+            switch(this.Direction) {
+                case Direction.Up:    isAtEdge = (dy <= -edgeThreshold); break;
+                case Direction.Down:  isAtEdge = (dy >= edgeThreshold);  break;
+                case Direction.Left:  isAtEdge = (dx <= -edgeThreshold); break;
+                case Direction.Right: isAtEdge = (dx >= edgeThreshold);  break;
+            }
+
+            // 计算前方格子坐标
+            var frontX = currentMapID.X, frontY = currentMapID.Y;
+            switch(this.Direction){
+                case Direction.Up:    frontY--; break;
+                case Direction.Down:  frontY++; break;
+                case Direction.Left:  frontX--; break;
+                case Direction.Right: frontX++; break;
+            }
+
+            // ========== 推箱子逻辑：检测前方是否是箱子 ==========
+            if(frontX>=0 && frontX<15 && frontY>=0 && frontY<13 && townBarrierMap[frontY][frontX] === 3){
+                if(isAtEdge) {
+                    // 角色已触碰到箱子，尝试推动
+                    if(this.tryPushBox(frontX, frontY, this.Direction)){
+                        // 推动成功，角色可以进入原箱子位置（原箱子位置已变为0）
+                        this.PushCount = 0; //箱子推动成功后，推动的蓄力要重新计数
+                        return true;
+                    }
+                } else {
+                    // 尚未触碰到箱子，允许角色继续向箱子移动
+                    return true;
+                }
             }
 
             var result = false;

@@ -34,8 +34,8 @@ var Barrier = {
     Create: function (x, y, num) {
         var barrierunit = Barrier.Materials[num];
         if (barrierunit) {
-            var zindex = y;
-            zindex += x > 0 ? 1 : 0;
+        //修改判断第一行逻辑，否则会把箱子推到地板的下一层
+            var zindex = y + 1;
             zindex = zindex * 2;
             if (num > 3 && num < 100) {
                 zindex += 2;
