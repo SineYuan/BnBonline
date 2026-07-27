@@ -72,6 +72,15 @@ crashlytics.properties
 crashlytics-build.properties
 fabric.properties
 
+### Go gitignore ###
+/bnbserver
+*.exe
+*.test
+*.out
+
+### Rust gitignore ###
+/target/
+
 ### Node gitignore ###
 # Logs
 logs
