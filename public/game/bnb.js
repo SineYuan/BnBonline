@@ -97,27 +97,88 @@ function CreateRole(number, x, y){
 var isKeyup = false;
 var currentKeyCode = 0;
 
-function CreateUserEvent(role, socket){
-    //按键事件
-    document.addEventListener("keydown", RoleEvent, true);
-    document.addEventListener("keyup", RoleEventEnd, true);
+// 使用 KeyboardEvent.code，而不是已废弃且在不同浏览器中行为不一致的
+// window.event/keyCode。返回值仍保留旧游戏逻辑使用的数字键码。
+function GetGameKeyCode(event) {
+    var codeMap = {
+        KeyW: 87,
+        KeyA: 65,
+        KeyS: 83,
+        KeyD: 68,
+        KeyJ: 74,
+        // 备用键位：部分浏览器扩展会在页面收到事件前截获 J、D 等键。
+        // 映射成旧游戏的键码，网络协议和原有角色逻辑无需改动。
+        ArrowUp: 87,
+        ArrowLeft: 65,
+        ArrowDown: 83,
+        ArrowRight: 68,
+        Space: 74
+    };
 
-    function RoleEvent(e) {
-        if (gameRunning) {
-            var key = window.event ? e.keyCode : e.which;
-        
-            if(key in {87 : 'W', 65 : 'A', 83 : 'S', 68 : 'D', 74 : 'J'}){
+    if (codeMap[event.code]) {
+        return codeMap[event.code];
+    }
+    // 为较旧浏览器或个别输入法提供按键值回退。
+    var keyMap = {
+        w: 87,
+        W: 87,
+        a: 65,
+        A: 65,
+        s: 83,
+        S: 83,
+        d: 68,
+        D: 68,
+        j: 74,
+        J: 74,
+        ' ': 74,
+        ArrowUp: 87,
+        ArrowLeft: 65,
+        ArrowDown: 83,
+        ArrowRight: 68
+    };
+    if (keyMap[event.key]) {
+        return keyMap[event.key];
+    }
+    return event.which || event.keyCode || 0;
+}
+
+function CreateUserEvent(role, socket){
+    // 让游戏画布成为可聚焦元素；开局后直接按 WASD/J 即可，不需要先点击画布。
+    var gameCanvas = document.querySelector('canvas');
+    if (gameCanvas) {
+        gameCanvas.setAttribute('tabindex', '0');
+        gameCanvas.focus();
+    }
+
+    // 监听 window 而不是 document：游戏画布获得焦点后，键盘事件会稳定地送达。
+    window.addEventListener("keydown", RoleEvent, true);
+    window.addEventListener("keyup", RoleEventEnd, true);
+
+    function RoleEvent(event) {
+        if (!gameRunning) {
+            return;
+        }
+
+        var key = GetGameKeyCode(event);
+        if (key in {87 : 'W', 65 : 'A', 83 : 'S', 68 : 'D', 74 : 'J'}) {
+            // 防止浏览器把游戏按键解释为页面操作，同时避免长按 J 重复放泡泡。
+            event.preventDefault();
+            if (!(event.repeat && key === 74)) {
                 RoleKeyEvent(key, role);
             }
             socket.emit("KeyUp", key);
         }
     }
 
-    //KeyPress结束事件
-    function RoleEventEnd(e) {
-        if (gameRunning) {
-            var key = window.event ? e.keyCode : e.which;
-            var centerpoint = role.MapPoint();
+    // KeyPress结束事件
+    function RoleEventEnd(event) {
+        if (!gameRunning) {
+            return;
+        }
+
+        var key = GetGameKeyCode(event);
+        if (key in {87 : 'W', 65 : 'A', 83 : 'S', 68 : 'D', 74 : 'J'}) {
+            event.preventDefault();
             RoleKeyEventEnd(key, role);
             socket.emit("KeyDown", key);
         }
